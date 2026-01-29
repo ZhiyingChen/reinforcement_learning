@@ -14,7 +14,7 @@ if __name__ == "__main__":
         seed=42,
     )
 
-    cfg = PlannerConfig(gamma=None, theta=1e-8, eval_theta=1e-10)
+    cfg = PlannerConfig(gamma=0.9, theta=1e-8, eval_theta=1e-10)
     planner = DPPlanner(env, cfg)
 
     # 1) Value Iteration

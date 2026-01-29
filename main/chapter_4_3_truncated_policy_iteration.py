@@ -13,7 +13,7 @@ if __name__ == "__main__":
         start=(0, 0),
         seed=42,
     )
-    cfg = PlannerConfig(gamma=None, theta=1e-8, eval_theta=1e-10)
+    cfg = PlannerConfig(gamma=0.9, theta=1e-8, eval_theta=1e-10)
     planner = DPPlanner(env, cfg)
 
     # 3) Truncated / Modified Policy Iteration（每轮仅评估 3 次）

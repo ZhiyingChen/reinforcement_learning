@@ -12,6 +12,10 @@
 - 支持策略可视化、状态价值可视化
 
 ## ⚙️ How to Run
+安装依赖
+```shell
+pip install -r requirements.txt
+```
 运行某一个章节的实验：
 ```shell
 python main/chapter_4_1_value_iteration.py
@@ -52,7 +56,7 @@ reinforcement_learning/
 │   │   ├── timing.py                      # 代码执行时间统计装饰器
 │   │   └── render.py                      # 网格策略可视化
 │
-└── test/
+└── test/                                  # 测试目录
 ```
 ---
 

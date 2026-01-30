@@ -134,16 +134,12 @@ class MCPlanner:
         init_policy: Optional[Dict[int, Dict[Action, float]]] = None,
         episodes_per_pair: int = 4,
         outer_iters: int = 5,
-        first_visit: Optional[bool] = None,   # 默认使用 cfg.first_visit（True）
     ) -> Tuple[Dict[int, Dict[Action, float]], Dict[int, Dict[Action, float]]]:
         """
         返回: (Q, π*)
         - 每一外层迭代：对每个 (s,a) 采集若干 episode，平均回报估计 q(s,a)，再贪心改进策略
         - 适合小状态空间（如 GridWorld）；大空间可改“按需子集采集”
         """
-
-
-        first_visit = self.cfg.first_visit if first_visit is None else first_visit
 
         # 初始化策略（均匀）
         pi = init_policy or self._uniform_policy()
@@ -162,26 +158,15 @@ class MCPlanner:
                     S, A, R = self.generate_episode(pi, start_state=sid, start_action=a0)
                     Gs = self.returns_from_rewards(R)
 
-                    visited: set[Tuple[int, Action]] = set()
-                    for t, (s_t, a_t) in enumerate(zip(S, A)):
-                        key = (s_t, a_t)
-                        if first_visit and key in visited:
-                            continue
-                        visited.add(key)
-
-                        Gt = Gs[t]
-                        returns_sum[key] = returns_sum.get(key, 0.0) + Gt
-                        returns_count[key] = returns_count.get(key, 0) + 1
-                        Q.setdefault(s_t, {})
-                        Q[s_t][a_t] = returns_sum[key] / returns_count[key]
-
-                        max_q_all = max([Q[s][a] for s in Q for a in Q[s] if len(Q[s]) > 0])
-                        self.logger.add_scalar("mc_basic/max_q", max_q_all, iter_id)
+                    key = (sid, a0)
+                    returns_sum[key] = returns_sum.get(key, 0.0) + Gs[0]
+                    returns_count[key] = returns_count.get(key, 0) + 1
+                    Q.setdefault(sid, {})
+                    Q[sid][a0] = returns_sum[key] / returns_count[key]
 
             # 策略改进（贪心）
             pi = self._greedy_policy_from_Q(Q)
             self.logger.log("Policy improved for MC Basic.")
-
 
         return Q, pi
 

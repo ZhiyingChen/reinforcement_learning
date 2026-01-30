@@ -5,10 +5,10 @@ from source.utils.render import render_value_grid, render_policy_grid
 
 if __name__ == "__main__":
     env = GridWorld(
-        height=5,
-        width=5,
-        target=(3, 2),
-        forbidden={(1, 1), (1, 2), (2, 2), (3, 1), (3, 3), (4, 1)},
+        height=3,
+        width=3,
+        target=(2, 2),
+        forbidden={(1, 1)},
         start=(0, 0),
         seed=42,
     )

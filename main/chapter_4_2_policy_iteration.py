@@ -19,8 +19,8 @@ if __name__ == "__main__":
 
     # 2) Policy Iteration
     V_pi, pi_pi = planner.policy_iteration()
-    print("\n=== Policy Iteration ===")
+    planner.logger.log("\n=== Policy Iteration ===")
     render_value_grid(env, V_pi)
     render_policy_grid(env, pi_pi)
-    print("Residual:", f"{planner.optimality_residual(V_pi):.3e}")
+    planner.logger.log(f"Residual: {planner.optimality_residual(V_pi):.3e}")
 

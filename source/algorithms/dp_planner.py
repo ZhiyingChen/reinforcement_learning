@@ -13,6 +13,8 @@ from source.utils.mdp_ops import (
     bellman_residual_optimality,
     policy_equal,
 )
+from source.utils.logger_manager import LoggerManager
+from source.utils.timing import record_time_decorator
 
 @dataclass
 class PlannerConfig:
@@ -28,7 +30,10 @@ class DPPlanner:
     """
     统一封装 Value Iteration / Policy Iteration / Truncated Policy Iteration（Modified PI）
     """
-    def __init__(self, env: GridWorld, cfg: Optional[PlannerConfig] = None) -> None:
+    def __init__(self, env: GridWorld, cfg: Optional[PlannerConfig] = None, log_dir="logs/dp", use_tb=True) -> None:
+        self.logger = LoggerManager(log_dir, use_tensorboard=use_tb)
+        self.logger.log("DPPlanner initialized.")
+
         self.env = env
         self.P: Dict[int, Dict[Action, List[Transition]]] = env.get_P()
         self.nS = len(self.P)
@@ -81,6 +86,7 @@ class DPPlanner:
     # ---------------------------------------------------------------------
     # 算法 1：Value Iteration
     # ---------------------------------------------------------------------
+    @record_time_decorator('value iteration')
     def value_iteration(
         self,
         V_init: Optional[np.ndarray] = None,
@@ -110,6 +116,7 @@ class DPPlanner:
     # ---------------------------------------------------------------------
     # 算法 2：Policy Iteration（经典 PI：完整策略评估 + 策略改进）
     # ---------------------------------------------------------------------
+    @record_time_decorator('policy iteration')
     def policy_iteration(
         self,
         pi_init: Optional[Dict[int, Dict[Action, float]]] = None,
@@ -136,6 +143,7 @@ class DPPlanner:
     # 算法 3：Truncated / Modified Policy Iteration
     # 每次只对当前策略做 k 次（或少量）评估 sweep，再策略改进
     # ---------------------------------------------------------------------
+    @record_time_decorator('truncated policy iteration')
     def truncated_policy_iteration(
         self,
         *,

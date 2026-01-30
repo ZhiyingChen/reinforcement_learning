@@ -15,12 +15,12 @@ if __name__ == "__main__":
     )
 
     cfg = PlannerConfig(gamma=0.9, theta=1e-8, eval_theta=1e-10)
-    planner = DPPlanner(env, cfg)
+    planner = DPPlanner(env, cfg, log_dir="logs/value_iteration")
 
     # 1) Value Iteration
     V_vi, pi_vi = planner.value_iteration()
-    print("\n=== Value Iteration ===")
+    planner.logger.log("\n=== Value Iteration ===")
     render_value_grid(env, V_vi)
     render_policy_grid(env, pi_vi)
-    print("Residual:", f"{planner.optimality_residual(V_vi):.3e}")
+    planner.logger.log(f"Residual: {planner.optimality_residual(V_vi):.3e}")
 

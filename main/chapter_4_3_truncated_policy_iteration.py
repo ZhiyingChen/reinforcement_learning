@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     # 3) Truncated / Modified Policy Iteration（每轮仅评估 3 次）
     V_tpi, pi_tpi = planner.truncated_policy_iteration(eval_sweeps=3)
-    print("\n=== Truncated Policy Iteration (k=3) ===")
+    planner.logger.log("\n=== Truncated Policy Iteration (k=3) ===")
     render_value_grid(env, V_tpi)
     render_policy_grid(env, pi_tpi)
-    print("Residual:", f"{planner.optimality_residual(V_tpi):.3e}")
+    planner.logger.log(f"Residual: {planner.optimality_residual(V_tpi):.3e}")

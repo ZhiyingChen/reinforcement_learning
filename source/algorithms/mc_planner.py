@@ -52,7 +52,6 @@ class MCPlanner:
     # ------------------------------------------------------------------ #
     # 公共：episode 生成与回报计算
     # ------------------------------------------------------------------ #
-    @record_time_decorator("MCPlanner.run_episode")
     def generate_episode(
         self,
         pi: Dict[int, Dict[Action, float]],
@@ -128,6 +127,7 @@ class MCPlanner:
     # ------------------------------------------------------------------ #
     # 算法 1：MC Basic（model-free variant of policy iteration）
     # ------------------------------------------------------------------ #
+    @record_time_decorator("MC BASIC")
     def mc_basic(
         self,
         *,
@@ -188,6 +188,7 @@ class MCPlanner:
     # ------------------------------------------------------------------ #
     # 算法 2：MC Exploring Starts（每集随机起始 (s0, a0)）
     # ------------------------------------------------------------------ #
+    @record_time_decorator("MC Exploring Starts")
     def mc_exploring_starts(
         self,
         *,
@@ -236,6 +237,7 @@ class MCPlanner:
     # ------------------------------------------------------------------ #
     # 算法 3：MC ε-Greedy（On-policy MC Control）
     # ------------------------------------------------------------------ #
+    @record_time_decorator("MC Epsilon Greedy")
     def mc_epsilon_greedy(
         self,
         *,

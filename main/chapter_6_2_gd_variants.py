@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# 路径：main/chapter_6_2_sgd_variants.py
+# 路径：main/chapter_6_2_gd_variants.py
 import numpy as np
 from typing import Iterable, Tuple
 from source.algorithms.sa_planner import SAPlanner, SAConfig

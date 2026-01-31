@@ -39,7 +39,7 @@ reinforcement_learning/
 │   ├── chapter_5_2_mc_exploring_starts.py
 │   ├── chapter_5_3_mc_epsilon_greedy.py
 │   ├── chapter_6_1_robbins_monro.py
-│   └── chapter_6_2_sgd_variants.py
+│   └── chapter_6_2_gd_variants.py
 │
 ├── source/
 │   ├── algorithms/
@@ -181,8 +181,8 @@ SA 相关算法位于：`source/algorithms/sa_planner.py`
 - 步长满足 $Σa_k=∞, Σa_k²<∞$（默认 $β=1.0$）
 - 噪声零均值、二阶矩有界
 
-### **2. SGD 变体（BGD / MBGD / SGD）**
-入口：`main/chapter_6_2_sgd_variants.py`
+### **2. GD 算法（BGD / MBGD / SGD）**
+入口：`main/chapter_6_2_gd_variants.py`
 
 针对最小化问题 $J(w)=E[f(w,X)]$，实现四种梯度方法：
 

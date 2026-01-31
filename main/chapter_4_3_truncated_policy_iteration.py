@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from source.grid_world import GridWorld
-from source.algorithms.dp_planner import DPPlanner, PlannerConfig
+from source.algorithms.vp_planner import VPPlanner, PlannerConfig
 from source.utils.render import render_value_grid, render_policy_grid
 
 
@@ -14,7 +14,7 @@ if __name__ == "__main__":
         seed=42,
     )
     cfg = PlannerConfig(gamma=0.9, theta=1e-8, eval_theta=1e-10)
-    planner = DPPlanner(env, cfg)
+    planner = VPPlanner(env, cfg)
 
     # 3) Truncated / Modified Policy Iteration（每轮仅评估 3 次）
     V_tpi, pi_tpi = planner.truncated_policy_iteration(eval_sweeps=3)

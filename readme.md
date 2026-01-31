@@ -6,7 +6,7 @@
 项目特点：
 
 - 自定义 **GridWorld 环境**
-- 完整的 **DP + MC 两大类算法框架**
+- 完整的 **各个章节算法框架**
 - **日志系统（Python logging + TensorBoard + Timing）**
 - 清晰的模块化代码结构，便于扩展
 - 支持策略可视化、状态价值可视化
@@ -43,7 +43,7 @@ reinforcement_learning/
 │
 ├── source/
 │   ├── algorithms/
-│   │   ├── dp_planner.py                  # DP：VI / PI / Truncated PI
+│   │   ├── vp_planner.py                  # V & P：VI / PI / Truncated PI
 │   │   ├── mc_planner.py                  # MC：Basic / ES / ε-greedy
 │   │   └── sa_planner.py                  # SA：RM / GD / SGD / BGD / MBGD
 │   │
@@ -53,8 +53,8 @@ reinforcement_learning/
 │   │
 │   ├── utils/
 │   │   ├── grid_world.py                  # GridWorld 环境
-│   │   ├── mdp_ops.py                     # DP 用 Q/V/backup 工具
-│   │   ├── policy_ops.py                  # MC/DP 通用策略函数
+│   │   ├── mdp_ops.py                     # V & P 用 Q/V/backup 工具
+│   │   ├── policy_ops.py                  # MC 通用策略函数
 │   │   ├── sa_schedules.py                # SA 相关函数
 │   │   ├── logger_manager.py              # 日志管理（logging + TensorBoard）
 │   │   ├── timing.py                      # 代码执行时间统计装饰器
@@ -79,7 +79,7 @@ reinforcement_learning/
 - 五种动作：上 / 下 / 左 / 右 / 原地
 - 支持：
   - `step()` 用于 MC 采样
-  - `get_P()` 生成 Gym-style MDP 动力学，用于 DP（VI/PI）
+  - `get_P()` 生成 Gym-style 转移矩阵，用于 VI/PI
 
 奖励模型、转移概率均可自定义。
 
@@ -89,7 +89,7 @@ reinforcement_learning/
 
 V & P 相关算法位于：
 
-`source/algorithms/dp_planner.py`
+`source/algorithms/vp_planner.py`
 
 提供三种经典 V & P  方法：
 
@@ -186,12 +186,12 @@ SA 相关算法位于：`source/algorithms/sa_planner.py`
 
 针对最小化问题 $J(w)=E[f(w,X)]$，实现四种梯度方法：
 
-| 方法 | 批次大小 | 步长策略 | 特点 |
-|------|---------|---------|------|
-| **GD** | 全量数据 | 固定 lr | 确定性梯度，仅作对比基准 |
-| **BGD** | 全量数据 | RM 步长 | 每轮遍历全数据集，理论保证收敛 |
-| **MBGD** | batch_size (e.g., 64) | RM 步长 | 小批量随机梯度，实用折中 |
-| **SGD** | 1 | RM 步长 | 单样本更新，方差大但计算快 |
+| 方法       | 批次大小                  | 步长策略  | 特点              |
+|----------|-----------------------|-------|-----------------|
+| **GD**   | 全量数据                  | 固定 lr | 确定性梯度，仅作对比基准    |
+| **BGD**  | 全量数据                  | RM 步长 | 每轮遍历全数据集，理论保证收敛 |
+| **MBGD** | batch_size (e.g., 64) | RM 步长 | 小批量随机梯度，实用折中    |
+| **SGD**  | 1                     | RM 步长 | 单样本更新，方差大但计算快   |
 
 **统一收敛框架**：
 - 除 GD 使用固定学习率外，BGD/MBGD/SGD 均采用 RM 步长（$a_k = a_0/k^β$）
@@ -220,7 +220,7 @@ SA 相关算法位于：`source/algorithms/sa_planner.py`
 - episode returns  
 - epsilon 衰减  
 - 最大 Q 变化  
-- MC/DP/RM/GD 收敛趋势  
+- MC/V&P/RM/GD 收敛趋势  
 
 运行： 
 ```shell

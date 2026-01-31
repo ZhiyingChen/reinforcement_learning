@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from source.grid_world import GridWorld
-from source.algorithms.dp_planner import DPPlanner, PlannerConfig
+from source.algorithms.vp_planner import VPPlanner, PlannerConfig
 from source.utils.render import render_value_grid, render_policy_grid
 
 
@@ -15,7 +15,7 @@ if __name__ == "__main__":
     )
 
     cfg = PlannerConfig(gamma=0.9, theta=1e-8, eval_theta=1e-10)
-    planner = DPPlanner(env, cfg)
+    planner = VPPlanner(env, cfg)
 
     # 2) Policy Iteration
     V_pi, pi_pi = planner.policy_iteration()

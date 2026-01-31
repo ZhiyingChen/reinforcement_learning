@@ -26,7 +26,7 @@ class PlannerConfig:
     tie_breaker: Optional[List[Action]] = None  # 并列动作打破顺序
 
 
-class DPPlanner:
+class VPPlanner:
     """
     统一封装 Value Iteration / Policy Iteration / Truncated Policy Iteration（Modified PI）
     """

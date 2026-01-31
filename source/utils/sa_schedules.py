@@ -29,7 +29,6 @@ def series_diagnosis(a0: float, beta: float) -> Tuple[bool, bool]:
     return sum_inf, sum_sq_finite
 
 def moving_average(x, window=50):
-    import numpy as np
     if len(x) == 0:
         return np.array([])
     w = min(window, len(x))

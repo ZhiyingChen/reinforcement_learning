@@ -35,6 +35,18 @@ class LoggerManager:
     def log(self, msg: str):
         self.logger.info(msg)
 
+    def info(self, msg: str):
+        self.logger.info(msg)
+
+    def warning(self, msg: str):
+        self.logger.warning(msg)
+
+    def debug(self, msg: str):
+        self.logger.debug(msg)
+
+    def error(self, msg: str):
+        self.logger.error(msg)
+
     def add_scalar(self, tag: str, value: float, step: int):
         if self.writer is not None:
             self.writer.add_scalar(tag, value, step)

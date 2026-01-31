@@ -29,7 +29,7 @@ class SAPlanner:
     def __init__(self, cfg: Optional[SAConfig] = None) -> None:
         self.cfg = cfg or SAConfig()
         self.rng = np.random.default_rng(self.cfg.seed)
-        self.logger = LoggerManager(self.cfg.log_dir, self.cfg.use_tensorboard)  # 统一日志  [1](https://approd-my.sharepoint.com/personal/chenz32_airproducts_com/Documents/Microsoft%20Copilot%20Chat%20%E6%96%87%E4%BB%B6/logger_manager.py)
+        self.logger = LoggerManager(self.cfg.log_dir, self.cfg.use_tensorboard)
         self.step_counter = 0
 
     # ------------------ Robbins–Monro ------------------
@@ -108,7 +108,7 @@ class SAPlanner:
             # 采用 RM 步长，满足收敛充分条件（0.5<beta<=1）
             sum_inf, sum_sq = series_diagnosis(rm_a0, rm_beta)
             if not (sum_inf and sum_sq):
-                self.logger.log(f"[WARN] RM steps for {method} not ideal: (sum_inf={sum_inf}, sum_sq_finite={sum_sq}).")
+                self.logger.warning(f"[WARN] RM steps for {method} not ideal: (sum_inf={sum_inf}, sum_sq_finite={sum_sq}).")
             steps = rm_step_sequence(rm_a0, rm_beta)
 
         loss_hist, grad_norm_hist = [], []

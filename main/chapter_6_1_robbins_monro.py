@@ -17,7 +17,7 @@ if __name__ == "__main__":
     planner = SAPlanner(SAConfig(log_dir="logs/ch6_rm", use_tensorboard=True))
 
     out = planner.robbins_monro(
-        oracle, np.array([3.0]),
+        oracle, w0=np.array([3.0]),
         a0=1.0, beta=1.0, max_iter=5000, tol=1e-6, diag_every=100
     )
 

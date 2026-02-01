@@ -61,8 +61,8 @@ reinforcement_learning/
 │   │   └── render.py                      # 网格策略可视化
 │   │
 │   ├── grid_word.py                       # 网格世界
-│   ├── sa_expression.py                   # SA表达式
-│   │
+│   └── sa_expression.py                   # SA表达式
+│   
 └── test/                                  # 测试目录
 ```
 ---

@@ -111,232 +111,366 @@ class TDPlanner:
     # =========================================================
     #                     SARSA 系列
     # =========================================================
+    # ---------- SARSA（一步一更新） ----------
     @record_time_decorator("SARSA")
     def sarsa(
-        self,
-        *,
-        num_episodes: int = 2000,
-        alpha: float = 0.1,
-        epsilon: float = 0.1,
-        epsilon_decay: Optional[float] = None,
-        min_epsilon: float = 0.01,
-        pi_init: Optional[Dict[int, Dict[Action, float]]] = None,
-        Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
-        log_every: int = 20,
+            self,
+            *,
+            num_episodes: int = 2000,
+            alpha: float = 0.1,
+            epsilon: float = 0.1,
+            epsilon_decay: Optional[float] = None,
+            min_epsilon: float = 0.01,
+            pi_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            max_steps_per_episode: Optional[int] = None,
+            diag_every: int = 100,
     ) -> Tuple[Dict[int, Dict[Action, float]], Dict[int, Dict[Action, float]]]:
-        """
-        SARSA: q_{t+1}(s,a) ← q_t(s,a) + α [ r + γ q_t(s',a') - q_t(s,a) ]
-        on-policy：行为=目标=ε-greedy(Q)。
-        """
         Q: Dict[int, Dict[Action, float]] = Q_init or {s: {} for s in range(self.nS)}
-        pi = pi_init or self._epsilon_greedy_pi_from_Q(Q, epsilon)
-
         eps = float(epsilon)
+        pi = pi_init or self._epsilon_greedy_pi_from_Q(Q, eps)
+
         for ep in range(num_episodes):
-            S, A, R = self._run_episode(pi)
-            for t in range(len(S)):
-                s, a = S[t], A[t]
-                r = R[t]
-                if t == len(S) - 1:
+            # 初始化一集
+            self.env.reset()
+            sid = self.env.sid(self.env.s)
+            a = sample_action_from_policy(self.rng, pi[sid])
+            ep_ret = 0.0
+
+            for t in range(self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode):
+                # 与环境交互一步
+                nsid, r, done, _ = self.env.step(a)
+                ep_ret += r
+
+                # 先用 π_t 在 s' 选择 a' （课件顺序）
+                if not done:
+                    a_next = sample_action_from_policy(self.rng, pi[nsid])
+
+                # 计算 TD 目标并更新 Q(s,a)
+                q_sa = Q.get(sid, {}).get(a, 0.0)
+                if done:
                     td_target = r
                 else:
-                    s_next, a_next = S[t + 1], A[t + 1]
-                    q_next = Q.get(s_next, {}).get(a_next, 0.0)
+                    q_next = Q.get(nsid, {}).get(a_next, 0.0)
                     td_target = r + self.gamma * q_next
+                Q.setdefault(sid, {})
+                delta = td_target - q_sa  # ★ TD error
+                Q[sid][a] = q_sa + alpha * delta
 
-                q_sa = Q.get(s, {}).get(a, 0.0)
-                Q.setdefault(s, {})
-                Q[s][a] = q_sa + alpha * (td_target - q_sa)
+                # 立刻对当前状态做策略改进（ε-greedy(Q)）
+                acts = self._allowed(sid)
+                q_s = {aa: Q[sid].get(aa, -np.inf) for aa in acts}
+                pi[sid] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
 
-            # 策略改进（ε-greedy）
-            pi = self._epsilon_greedy_pi_from_Q(Q, eps)
+                # --- 诊断日志（按步间隔写） ---
+                if t % diag_every == 0:
+
+                    self.logger.add_scalar("SARSA/td_error_abs", abs(float(delta)), ep * 10_000 + t)
+                    self.logger.add_scalar("SARSA/q_max_s", max(q_s.values()), ep * 10_000 + t)
+                    # 可选：写到 run.log（不建议太频繁）
+                    self.logger.log(f"[SARSA] ep={ep} t={t} |δ|={abs(float(delta)):.3e}")
+
+                if done:
+                    break
+                # 滚动到下一步（注意：a_next 是基于 π_t 选出的）
+                sid, a = nsid, a_next
+
+            # 每集：回报 + ε
+            self.logger.add_scalar("SARSA/epsilon", eps, ep)
+            self.logger.add_scalar("episode/return", ep_ret, ep)
+
             if epsilon_decay is not None:
                 eps = max(min_epsilon, eps * epsilon_decay)
-
-            if (ep + 1) % log_every == 0:
-                self.logger.add_scalar("SARSA/epsilon", eps, ep + 1)
+                # 同步刷新整张策略的 ε（可选，保持行为与目标一致）
+                for s in range(self.nS):
+                    acts = self._allowed(s)
+                    q_s = {aa: Q.get(s, {}).get(aa, 0.0) for aa in acts}
+                    pi[s] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
 
         return Q, pi
 
     @record_time_decorator("ExpectedSARSA")
     def expected_sarsa(
-        self,
-        *,
-        num_episodes: int = 2000,
-        alpha: float = 0.1,
-        epsilon: float = 0.1,
-        epsilon_decay: Optional[float] = None,
-        min_epsilon: float = 0.01,
-        pi_init: Optional[Dict[int, Dict[Action, float]]] = None,
-        Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
-        log_every: int = 20,
+            self,
+            *,
+            num_episodes: int = 2000,
+            alpha: float = 0.1,
+            epsilon: float = 0.1,
+            epsilon_decay: Optional[float] = None,
+            min_epsilon: float = 0.01,
+            Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            max_steps_per_episode: Optional[int] = None,
+            diag_every: int = 100,
     ) -> Tuple[Dict[int, Dict[Action, float]], Dict[int, Dict[Action, float]]]:
-        """
-        Expected SARSA:
-          td_target = r + γ E_{a'~π(.|s')}[ q(s',a') ]
-        相比 SARSA 用期望代替随机 a'，方差更低。
-        """
-        Q: Dict[int, Dict[Action, float]] = Q_init or {s: {} for s in range(self.nS)}
-        pi = pi_init or self._epsilon_greedy_pi_from_Q(Q, epsilon)
 
-        eps = float(epsilon)
-        for ep in range(num_episodes):
-            S, A, R = self._run_episode(pi)
-            for t in range(len(S)):
-                s, a = S[t], A[t]
-                r = R[t]
-                if t == len(S) - 1:
-                    td_target = r
-                else:
-                    s_next = S[t + 1]
-                    # 期望 q(s',a') = sum_a π(a|s') * q(s',a)
-                    exp_q = 0.0
-                    for a2, p in pi[s_next].items():
-                        exp_q += p * Q.get(s_next, {}).get(a2, 0.0)
-                    td_target = r + self.gamma * exp_q
-
-                q_sa = Q.get(s, {}).get(a, 0.0)
-                Q.setdefault(s, {})
-                Q[s][a] = q_sa + alpha * (td_target - q_sa)
-
-            # ε-greedy 策略更新
-            pi = self._epsilon_greedy_pi_from_Q(Q, eps)
-            if epsilon_decay is not None:
-                eps = max(min_epsilon, eps * epsilon_decay)
-            if (ep + 1) % log_every == 0:
-                self.logger.add_scalar("ExpectedSARSA/epsilon", eps, ep + 1)
-
-        return Q, pi
-
-    @record_time_decorator("nStepSARSA")
-    def n_step_sarsa(
-        self,
-        *,
-        n: int = 3,
-        num_episodes: int = 2000,
-        alpha: float = 0.1,
-        epsilon: float = 0.1,
-        epsilon_decay: Optional[float] = None,
-        min_epsilon: float = 0.01,
-        Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
-    ) -> Tuple[Dict[int, Dict[Action, float]], Dict[int, Dict[Action, float]]]:
-        """
-        n-step SARSA（前视）：G_t^(n) = r_{t+1}+...+γ^{n} q(s_{t+n}, a_{t+n})
-        含 Sarsa(n=1) 与 MC(n=∞) 两极。更新在 t+n 时对 (s_t,a_t) 执行。
-        """
         Q: Dict[int, Dict[Action, float]] = Q_init or {s: {} for s in range(self.nS)}
         eps = float(epsilon)
         pi = self._epsilon_greedy_pi_from_Q(Q, eps)
 
         for ep in range(num_episodes):
-            S, A, R = self._run_episode(pi)
-            T = len(S)
-            # 累积 n-step return 的窗口更新
-            for t in range(T):
-                # 回看窗口 [t, t+n]
-                horizon = min(n, T - t - 1)  # 还剩的真正可累加步数（除去bootstrap一步）
-                G = 0.0
-                for k in range(horizon):
-                    G += (self.gamma ** k) * R[t + k]
-                # Bootstrap
-                if t + horizon < T - 0:
-                    s_boot = S[t + horizon]
-                    a_boot = A[t + horizon]  # Sarsa 的 bootstrapping 使用经历中的 a_{t+n}
-                    G += (self.gamma ** horizon) * Q.get(s_boot, {}).get(a_boot, 0.0)
+            self.env.reset()
+            sid = self.env.sid(self.env.s)
+            a = sample_action_from_policy(self.rng, pi[sid])
+            ep_ret = 0.0
 
-                s, a = S[t], A[t]
-                q_sa = Q.get(s, {}).get(a, 0.0)
-                Q.setdefault(s, {})
-                Q[s][a] = q_sa + alpha * (G - q_sa)
+            for t in range(self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode):
+                nsid, r, done, _ = self.env.step(a)
+                ep_ret += r
 
-            # ε-greedy 更新
-            pi = self._epsilon_greedy_pi_from_Q(Q, eps)
+                # Expected target：E_{a'~π(s')} q(s',a')
+                if done:
+                    td_target = r
+                else:
+                    exp_q = 0.0
+                    for a2, p in pi[nsid].items():
+                        exp_q += p * Q.get(nsid, {}).get(a2, 0.0)
+                    td_target = r + self.gamma * exp_q
+
+                q_sa = Q.get(sid, {}).get(a, 0.0)
+                Q.setdefault(sid, {})
+                delta = td_target - q_sa
+                Q[sid][a] = q_sa + alpha * delta
+
+                # 只对 s_t 进行策略改进
+                acts = self._allowed(sid)
+                q_s = {aa: Q[sid].get(aa, -np.inf) for aa in acts}
+                pi[sid] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
+
+                if t % diag_every == 0:
+                    self.logger.add_scalar("ExpectedSARSA/td_error_abs", abs(float(delta)), ep * 10_000 + t)
+                    self.logger.add_scalar("ExpectedSARSA/q_max_s", max(q_s.values()), ep * 10_000 + t)
+                    # 可选：写到 run.log（不建议太频繁）
+                    self.logger.log(f"[ExpectedSARSA] ep={ep} t={t} |δ|={abs(float(delta)):.3e}")
+
+                if done:
+                    break
+                # 下一步动作先按“更新前”的策略 π_t(s') 选择
+                a_next = sample_action_from_policy(self.rng, pi[nsid])
+                sid, a = nsid, a_next
+
+            self.logger.add_scalar("episode/return", ep_ret, ep)
             if epsilon_decay is not None:
                 eps = max(min_epsilon, eps * epsilon_decay)
+                for s in range(self.nS):
+                    acts = self._allowed(s)
+                    q_s = {aa: Q.get(s, {}).get(aa, 0.0) for aa in acts}
+                    pi[s] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
+
+        return Q, pi
+
+    # ---------- n-step SARSA（在线前视，更新即改策略） ----------
+    @record_time_decorator("nStepSARSA")
+    def n_step_sarsa(
+            self,
+            *,
+            n: int = 3,
+            num_episodes: int = 2000,
+            alpha: float = 0.1,
+            epsilon: float = 0.1,
+            epsilon_decay: Optional[float] = None,
+            min_epsilon: float = 0.01,
+            Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            max_steps_per_episode: Optional[int] = None,
+            diag_every: int = 100,  # ★
+    ) -> Tuple[Dict[int, Dict[Action, float]], Dict[int, Dict[Action, float]]]:
+        assert n >= 1
+        Q: Dict[int, Dict[Action, float]] = Q_init or {s: {} for s in range(self.nS)}
+        eps = float(epsilon)
+        pi = self._epsilon_greedy_pi_from_Q(Q, eps)
+
+        for ep in range(num_episodes):
+            self.env.reset()
+            S: List[int] = []
+            A: List[Action] = []
+            R: List[float] = [0.0]  # 方便 1-based 对齐，R[t+1] 对应本步回报
+
+            sid = self.env.sid(self.env.s)
+            a = sample_action_from_policy(self.rng, pi[sid])
+            S.append(sid)
+            A.append(a)
+            ep_ret = 0.0
+            T = np.inf
+            t = 0
+
+            while True:
+                if t < (self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode):
+                    if t + 1 < T:
+                        nsid, r, done, _ = self.env.step(A[t])
+                        ep_ret += r
+                        S_next = nsid
+                        R.append(float(r))
+                        if done:
+                            T = t + 1
+                        else:
+                            a_next = sample_action_from_policy(self.rng, pi[S_next])
+                            S.append(S_next)
+                            A.append(a_next)
+
+                    tau = t - n + 1
+                    if tau >= 0:
+                        # 计算 G_tau^(n)
+                        G = 0.0
+                        upper = min(tau + n, T)
+                        for i in range(tau + 1, upper + 1):
+                            G += (self.gamma ** (i - tau - 1)) * R[i]
+                        if tau + n < T:
+                            # bootstrap with q(S_{tau+n}, A_{tau+n})
+                            s_boot, a_boot = S[tau + n], A[tau + n]
+                            G += (self.gamma ** n) * Q.get(s_boot, {}).get(a_boot, 0.0)
+
+                        # 在线更新 Q，并立刻只改 S_tau 的策略
+                        s_tau, a_tau = S[tau], A[tau]
+                        q_old = Q.get(s_tau, {}).get(a_tau, 0.0)
+                        Q.setdefault(s_tau, {})
+                        delta = G - q_old
+                        Q[s_tau][a_tau] = q_old + alpha * delta
+
+                        acts = self._allowed(s_tau)
+                        q_s = {aa: Q[s_tau].get(aa, -np.inf) for aa in acts}
+                        pi[s_tau] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
+
+                        # 诊断
+                        if t % diag_every == 0:
+                            self.logger.add_scalar(f"nStepSARSA(n={n})/td_error_abs", abs(float(delta)), ep * 10_000 + t)
+                            self.logger.add_scalar(f"nStepSARSA(n={n})/q_max_s", max(q_s.values()), ep * 10_000 + t)
+                            self.logger.log(f"[nStepSARSA] ep={ep} t={t} |δ|={abs(float(delta)):.3e}")
+
+                    t += 1
+                    if tau >= T - 1:
+                        break
+
+            self.logger.add_scalar("episode/return", ep_ret, ep)
+            if epsilon_decay is not None:
+                eps = max(min_epsilon, eps * epsilon_decay)
+                for s in range(self.nS):
+                    acts = self._allowed(s)
+                    q_s = {aa: Q.get(s, {}).get(aa, 0.0) for aa in acts}
+                    pi[s] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
 
         return Q, pi
 
     # =========================================================
     #                     Q-learning
     # =========================================================
+    # ---------- Q-learning（on-policy，一步一更新） ----------
     @record_time_decorator("Q-Learning-OnPolicy")
     def q_learning_on_policy(
-        self,
-        *,
-        num_episodes: int = 2000,
-        alpha: float = 0.1,
-        epsilon: float = 0.1,
-        epsilon_decay: Optional[float] = None,
-        min_epsilon: float = 0.01,
-        Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            self,
+            *,
+            num_episodes: int = 2000,
+            alpha: float = 0.1,
+            epsilon: float = 0.1,
+            epsilon_decay: Optional[float] = None,
+            min_epsilon: float = 0.01,
+            Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            max_steps_per_episode: Optional[int] = None,
+            diag_every: int = 100,
     ) -> Tuple[Dict[int, Dict[Action, float]], Dict[int, Dict[Action, float]]]:
-        """
-        On-policy 版本：行为=目标=ε-greedy(Q)，但目标使用 max_a q(s',a) 的 off-policy 目标；
-        算法表达式：
-          q(s,a) ← q(s,a) + α [ r + γ max_a' q(s',a') - q(s,a) ]。
-        """
         Q: Dict[int, Dict[Action, float]] = Q_init or {s: {} for s in range(self.nS)}
         eps = float(epsilon)
         pi = self._epsilon_greedy_pi_from_Q(Q, eps)
 
         for ep in range(num_episodes):
-            S, A, R = self._run_episode(pi)
-            for t in range(len(S)):
-                s, a = S[t], A[t]
-                r = R[t]
-                if t == len(S) - 1:
+            self.env.reset()
+            sid = self.env.sid(self.env.s)
+            a = sample_action_from_policy(self.rng, pi[sid])
+            ep_ret = 0.0
+
+            for t in range(self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode):
+                nsid, r, done, _ = self.env.step(a)
+                ep_ret += r
+
+                # Q-learning 目标：max_a' q(s',a')
+                if done:
                     td_target = r
                 else:
-                    s_next = S[t + 1]
-                    # 目标使用 greedy
-                    q_next = max(Q.get(s_next, {}).values()) if Q.get(s_next) else 0.0
+                    q_next = max(Q.get(nsid, {}).values()) if Q.get(nsid) else 0.0
                     td_target = r + self.gamma * q_next
-                q_sa = Q.get(s, {}).get(a, 0.0)
-                Q.setdefault(s, {})
-                Q[s][a] = q_sa + alpha * (td_target - q_sa)
-            # 行为=目标=ε-greedy
-            pi = self._epsilon_greedy_pi_from_Q(Q, eps)
+
+                q_sa = Q.get(sid, {}).get(a, 0.0)
+                Q.setdefault(sid, {})
+                delta = td_target - q_sa
+                Q[sid][a] = q_sa + alpha * delta
+
+                # 立刻只改 s_t 的策略（on-policy 版本依旧保持 ε-greedy）
+                acts = self._allowed(sid)
+                q_s = {aa: Q[sid].get(aa, -np.inf) for aa in acts}
+                pi[sid] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
+
+                if t % diag_every == 0:
+                    self.logger.add_scalar("Q-On/td_error_abs", abs(float(delta)), ep * 10_000 + t)
+                    self.logger.add_scalar("Q-On/q_max_s", max(q_s.values()), ep * 10_000 + t)
+
+                if done:
+                    break
+                # 下一步 a_{t+1} 仍从“更新前”的策略 π_t(s') 采样（课件顺序）
+                a_next = sample_action_from_policy(self.rng, pi[nsid])
+                sid, a = nsid, a_next
+
+            self.logger.add_scalar("episode/return", ep_ret, ep)
             if epsilon_decay is not None:
                 eps = max(min_epsilon, eps * epsilon_decay)
+                for s in range(self.nS):
+                    acts = self._allowed(s)
+                    q_s = {aa: Q.get(s, {}).get(aa, 0.0) for aa in acts}
+                    pi[s] = epsilon_greedy_from_q(q_s, acts, eps, self.tie)
 
         return Q, pi
 
+    # ---------- Q-learning（off-policy：π_b 采样，π_t 近 greedy；一步一更新） ----------
     @record_time_decorator("Q-Learning-OffPolicy")
     def q_learning_off_policy(
-        self,
-        *,
-        num_episodes: int = 2000,
-        alpha: float = 0.1,
-        behavior_epsilon: float = 0.3,   # 行为策略更探索
-        target_epsilon: float = 0.05,    # 目标策略接近 greedy
-        Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            self,
+            *,
+            num_episodes: int = 2000,
+            alpha: float = 0.1,
+            behavior_epsilon: float = 0.3,
+            target_epsilon: float = 0.05,
+            Q_init: Optional[Dict[int, Dict[Action, float]]] = None,
+            max_steps_per_episode: Optional[int] = None,
+            diag_every: int = 100,
     ) -> Tuple[Dict[int, Dict[Action, float]], Dict[int, Dict[Action, float]]]:
-        """
-        经典 off-policy：行为策略 π_b ≠ 目标策略 π_t。
-        采样用 π_b（高 ε），更新目标使用 max_a q(s',a)；目标策略维持接近 greedy(Q)。
-        """
         Q: Dict[int, Dict[Action, float]] = Q_init or {s: {} for s in range(self.nS)}
-        pi_t = self._epsilon_greedy_pi_from_Q(Q, target_epsilon)  # 目标策略
-        pi_b = self._epsilon_greedy_pi_from_Q(Q, behavior_epsilon)  # 行为策略
+        pi_t = self._epsilon_greedy_pi_from_Q(Q, target_epsilon)  # 目标策略（展示/评估）
+        pi_b = self._epsilon_greedy_pi_from_Q(Q, behavior_epsilon)  # 行为策略（采样）
 
         for ep in range(num_episodes):
-            # 用行为策略采样
-            S, A, R = self._run_episode(pi_b)
-            for t in range(len(S)):
-                s, a = S[t], A[t]
-                r = R[t]
-                if t == len(S) - 1:
+            self.env.reset()
+            sid = self.env.sid(self.env.s)
+            a = sample_action_from_policy(self.rng, pi_b[sid])
+            ep_ret = 0.0
+
+            for t in range(self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode):
+                nsid, r, done, _ = self.env.step(a)
+                ep_ret += r
+
+                if done:
                     td_target = r
                 else:
-                    s_next = S[t + 1]
-                    q_next = max(Q.get(s_next, {}).values()) if Q.get(s_next) else 0.0
+                    q_next = max(Q.get(nsid, {}).values()) if Q.get(nsid) else 0.0
                     td_target = r + self.gamma * q_next
-                q_sa = Q.get(s, {}).get(a, 0.0)
-                Q.setdefault(s, {})
-                Q[s][a] = q_sa + alpha * (td_target - q_sa)
 
-            # 更新目标策略为近似 greedy(Q)，行为策略保持探索性
-            pi_t = self._epsilon_greedy_pi_from_Q(Q, target_epsilon)
-            pi_b = self._epsilon_greedy_pi_from_Q(Q, behavior_epsilon)
+                q_sa = Q.get(sid, {}).get(a, 0.0)
+                Q.setdefault(sid, {})
+                delta = td_target - q_sa
+                Q[sid][a] = q_sa + alpha * delta
+
+                # 只改 s_t 的 π_t（接近 greedy）；π_b 保持较大 ε 继续探索
+                acts = self._allowed(sid)
+                q_s = {aa: Q[sid].get(aa, -np.inf) for aa in acts}
+                pi_t[sid] = epsilon_greedy_from_q(q_s, acts, target_epsilon, self.tie)
+                pi_b[sid] = epsilon_greedy_from_q(q_s, acts, behavior_epsilon, self.tie)
+
+                if t % diag_every == 0:
+                    self.logger.add_scalar("Q-Off/td_error_abs", abs(float(delta)), ep * 10_000 + t)
+                    self.logger.add_scalar("Q-Off/q_max_s", max(q_s.values()), ep * 10_000 + t)
+
+                if done:
+                    break
+                # 下一步行动来自“行为策略” π_b
+                a_next = sample_action_from_policy(self.rng, pi_b[nsid])
+                sid, a = nsid, a_next
+
+            self.logger.add_scalar("episode/return", ep_ret, ep)
 
         return Q, pi_t

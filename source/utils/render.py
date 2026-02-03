@@ -16,7 +16,7 @@ def render_value_grid(env: GridWorld, V, ndigits=2):
         for c in range(w):
             s = env.s2id[(r, c)]
             if env.target is not None and (r, c) == env.target:
-                row.append(f"T({V[s]: .{ndigits}f})")
+                row.append(f"   T    ")
             elif (r, c) in env.forbidden:
                 row.append(f"X({V[s]: .{ndigits}f})")
             else:

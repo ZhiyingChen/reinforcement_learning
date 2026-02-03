@@ -203,9 +203,6 @@ class GridWorld:
         return self.reward_step  # 新增普通格子 reward（如你需要）
 
     def _move(self, s: Coord, a: Action):
-        if self._is_terminal(s):
-            return s, False  # 吸收，不算撞墙
-
         r, c = s
         dr, dc = 0, 0
         if a == Action.UP:

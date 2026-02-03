@@ -16,11 +16,11 @@ def render_value_grid(env: GridWorld, V, ndigits=2):
         for c in range(w):
             s = env.s2id[(r, c)]
             if env.target is not None and (r, c) == env.target:
-                row.append(" T ")
+                row.append(f"T({V[s]: .{ndigits}f})")
             elif (r, c) in env.forbidden:
-                row.append(" XX")
+                row.append(f"X({V[s]: .{ndigits}f})")
             else:
-                row.append(f"{V[s]: .{ndigits}f}")
+                row.append(f"  {V[s]: .{ndigits}f} ")
         _get_logger().info(" | ".join(row))
 
 
@@ -90,33 +90,29 @@ def render_action_values_grid(
             is_target = (env.target is not None and (r, c) == env.target)
             is_forbid = ((r, c) in env.forbidden)
 
-            if is_target or is_forbid:
-                label = "T" if is_target else "X"
-                top_border = "┌" + horiz + "┐"
-                top_line   = "│" + " " * box_inner_w + "│"
-                mid_line   = "│" + label.center(box_inner_w) + "│"
-                bot_line   = "│" + " " * box_inner_w + "│"
-                bot_border = "└" + horiz + "┘"
+            s = env.s2id[(r, c)]
+            q_s = Q.get(s, {})
+
+            up = q_s.get(Action.UP, None)
+            down = q_s.get(Action.DOWN, None)
+            left = q_s.get(Action.LEFT, None)
+            right = q_s.get(Action.RIGHT, None)
+            stay = q_s.get(Action.STAY, None)
+
+            if is_target:
+                up_str = f'(T){fmt(up)}'.center(box_inner_w)
+            elif is_forbid:
+                up_str = f'(X){fmt(up)}'.center(box_inner_w)
             else:
-                s   = env.s2id[(r, c)]
-                q_s = Q.get(s, {})
+                up_str = fmt(up).center(box_inner_w)
+            mid_str = f"{fmt(left)} {fmt(stay)} {fmt(right)}"
+            down_str = fmt(down).center(box_inner_w)
 
-                up    = q_s.get(Action.UP,    None)
-                down  = q_s.get(Action.DOWN,  None)
-                left  = q_s.get(Action.LEFT,  None)
-                right = q_s.get(Action.RIGHT, None)
-                stay  = q_s.get(Action.STAY,  None)
-
-                # 各行内容
-                up_str    = fmt(up).center(box_inner_w)
-                mid_str   = f"{fmt(left)} {fmt(stay)} {fmt(right)}"
-                down_str  = fmt(down).center(box_inner_w)
-
-                top_border = "┌" + horiz + "┐"
-                top_line   = "│" + up_str + "│"
-                mid_line   = "│" + mid_str + "│"
-                bot_line   = "│" + down_str + "│"
-                bot_border = "└" + horiz + "┘"
+            top_border = "┌" + horiz + "┐"
+            top_line   = "│" + up_str + "│"
+            mid_line   = "│" + mid_str + "│"
+            bot_line   = "│" + down_str + "│"
+            bot_border = "└" + horiz + "┘"
 
             # 追加到该“网格行”的行缓存
             row_line_top_border.append(top_border)
@@ -142,11 +138,14 @@ def render_policy_grid(env: GridWorld, pi):
     for r in range(env.h):
         row = []
         for c in range(env.w):
-            if env.target is not None and (r, c) == env.target:
-                row.append("T"); continue
-            if (r, c) in env.forbidden:
-                row.append("X"); continue
             s = env.s2id[(r, c)]
             a_star = max(pi[s].items(), key=lambda kv: kv[1])[0] if pi.get(s) else Action.STAY
-            row.append(arrow[a_star])
+
+            if env.target is not None and (r, c) == env.target:
+                row.append(f"(T){arrow[a_star]} ")
+                continue
+            if (r, c) in env.forbidden:
+                row.append(f"(X){arrow[a_star]} ")
+                continue
+            row.append(f"   {arrow[a_star]} ")
         _get_logger().info(" ".join(row))

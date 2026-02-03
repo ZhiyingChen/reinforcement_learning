@@ -10,8 +10,12 @@ if __name__ == "__main__":
         width=5,
         target=(3, 2),
         forbidden={(1, 1), (1, 2), (2, 2), (3, 1), (3, 3), (4, 1)},
-        start=(0, 0),
+        start=(4, 4),
         seed=42,
+        reward_step=0.0,
+        reward_boundary=-1,
+        reward_forbidden=-1.0,
+        reward_target=10.0,
     )
 
     cfg = PlannerConfig(gamma=0.9, theta=1e-8, eval_theta=1e-10)

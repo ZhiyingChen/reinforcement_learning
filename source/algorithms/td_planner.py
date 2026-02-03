@@ -311,7 +311,10 @@ class TDPlanner:
             a = sample_action_from_policy(self.rng, pi[sid])
             ep_ret = 0.0
 
-            for t in range(self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode):
+            done = False
+            t = 0
+            while ((not done) and
+                   (t < self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode)):
                 nsid, r, done, _ = self.env.step(a)
                 ep_ret += r
 
@@ -335,9 +338,9 @@ class TDPlanner:
                 if t % diag_every == 0:
                     self.logger.add_scalar("Q-On/td_error_abs", abs(float(delta)), ep * 10_000 + t)
                     self.logger.add_scalar("Q-On/q_max_s", max(q_s.values()), ep * 10_000 + t)
+                    self.logger.log(f"[QlearningOnPolicy] ep={ep} t={t} |δ|={abs(float(delta)):.3e}")
 
-                if done:
-                    break
+                t += 1
                 # 下一步 a_{t+1} 仍从“更新前”的策略 π_t(s') 采样（课件顺序）
                 a_next = sample_action_from_policy(self.rng, pi[nsid])
                 sid, a = nsid, a_next
@@ -375,7 +378,10 @@ class TDPlanner:
             a = sample_action_from_policy(self.rng, pi_b[sid])
             ep_ret = 0.0
 
-            for t in range(self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode):
+            done = False
+            t = 0
+            while ((not done) and
+                   (t < self.cfg.max_steps_per_episode if max_steps_per_episode is None else max_steps_per_episode)):
                 nsid, r, done, _ = self.env.step(a)
                 ep_ret += r
 
@@ -399,9 +405,9 @@ class TDPlanner:
                 if t % diag_every == 0:
                     self.logger.add_scalar("Q-Off/td_error_abs", abs(float(delta)), ep * 10_000 + t)
                     self.logger.add_scalar("Q-Off/q_max_s", max(q_s.values()), ep * 10_000 + t)
+                    self.logger.log(f"[QlearningOffPolicy] ep={ep} t={t} |δ|={abs(float(delta)):.3e}")
 
-                if done:
-                    break
+                t += 1
                 # 下一步行动来自“行为策略” π_b
                 a_next = sample_action_from_policy(self.rng, pi_b[nsid])
                 sid, a = nsid, a_next

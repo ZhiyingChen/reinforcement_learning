@@ -1,6 +1,7 @@
 from ..grid_world import GridWorld
 from ..domain_object import Action
 import logging
+import numpy as np
 from typing import Dict, List, Tuple, Optional
 
 # 统一拿到命名 logger（与 LoggerManager 内一致）
@@ -21,6 +22,16 @@ def render_value_grid(env: GridWorld, V, ndigits=2):
             else:
                 row.append(f"{V[s]: .{ndigits}f}")
         _get_logger().info(" | ".join(row))
+
+
+def render_value_grid_by_Q(env, Q, Pi, ndigits=2):
+    V = np.zeros(len(env.id2s))
+    for sid in range(len(env.id2s)):
+        q_s = [Q.get(sid, {}).get(a, 0.0) * Pi.get(sid, {}).get(a, 0.0) for a in env.allowed_actions(env.id2s[sid])]
+        V[sid] = sum(q_s) if q_s else 0.0
+
+    render_value_grid(env, V=V, ndigits=ndigits)
+
 
 def render_action_values_grid(
     env: GridWorld,

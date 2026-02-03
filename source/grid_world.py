@@ -32,6 +32,12 @@ class GridWorld:
         absorbing_forbidden: bool = False,
         stay_on_wall: bool = True,
         seed: Optional[int] = None,
+        reward_step: float = 0.0,
+        reward_boundary: float = 0.0,
+        reward_forbidden: float = -1.0,
+        reward_target: float = 10.0,
+        gamma: float = 0.9,
+
     ):
         assert height > 0 and width > 0
         self.h, self.w = height, width
@@ -40,6 +46,11 @@ class GridWorld:
         self.start: Coord = start
         self.absorbing_forbidden = absorbing_forbidden
         self.stay_on_wall = stay_on_wall
+        self.reward_step = reward_step
+        self.reward_boundary = reward_boundary
+        self.reward_forbidden = reward_forbidden
+        self.reward_target = reward_target
+        self.gamma = gamma
 
         # 构造状态编码
         self.id2s: List[Coord] = [(row, col) for row in range(self.h) for col in range(self.w)]
@@ -72,24 +83,20 @@ class GridWorld:
         self.s = start if start is not None else self.start
         return self.sid(self.s)
 
-    def step(self, action: Optional[Action] = None) -> Tuple[int, Reward, bool, dict]:
-        """
-        单步交互：
-          - 如 action is None：按 π(a|s) 抽样动作（若未设置 π，则均匀）
-          - 然后按 P(s'|s,a) 与 P(r|s,a,s') 抽样转移与奖励
-        返回: (next_state_id, reward, done, info)
-        """
+    def step(self, action=None):
         sid = self.sid(self.s)
         if self._is_terminal(self.s):
-            # 终止态保持吸收
             return sid, 0.0, True, {"terminal": True}
 
         a = action or self._sample_action(sid)
-        next_sid = self._sample_next_state(sid, a)
-        r = self._sample_reward(sid, a, next_sid)
-        done = self._is_terminal(self.id2s[next_sid])
+        next_state, hit_wall = self._move(self.s, a)
+        next_sid = self.sid(next_state)
 
-        self.s = self.id2s[next_sid]
+        # 使用新的奖励逻辑
+        r = self._compute_reward(self.s, a, next_state, hit_wall)
+
+        done = self._is_terminal(next_state)
+        self.s = next_state
         return next_sid, r, done, {"action": a}
 
     # ---------- 配置/编辑 ----------
@@ -153,12 +160,12 @@ class GridWorld:
         for sid, s in enumerate(self.id2s):
             for a in Action.all():
                 # 默认转移
-                ns = self._move(s, a)
+                ns, hit_wall = self._move(s, a)
                 nsid = self.sid(ns)
                 self.transitions[(sid, a)] = {nsid: 1.0}
 
                 # 默认奖励（确定性）
-                default_r = self._default_reward(ns)
+                default_r = self._default_reward(s=s, a=a, ns=ns)
                 self.rewards[(sid, a, nsid)] = {default_r: 1.0}
 
         # 默认策略：非终止态均匀
@@ -167,36 +174,66 @@ class GridWorld:
             p = 1.0 / len(acts)
             self.policy[sid] = {a: p for a in acts}
 
-    def _default_reward(self, ns: Coord) -> Reward:
+    def _default_reward(self,s: Coord, a: Action, ns: Coord) -> Reward:
+        # target reward
         if self.target is not None and ns == self.target:
-            return 1.0
-        if ns in self.forbidden:
-            return -10.0
-        return 0.0
+            return float(self.reward_target)
 
-    def _move(self, s: Coord, a: Action) -> Coord:
+        # forbidden reward
+        if ns in self.forbidden:
+            return float(self.reward_forbidden)
+
+        # boundary reward：判断是否撞墙（原地不动）
+        # 若 stay_on_wall=True 且移动后 ns == 当前 s，则视为撞墙
+        if a != Action.STAY and ns == s:
+            return float(self.reward_boundary)
+
+        return float(self.reward_step)
+
+    def _compute_reward(self, s, a, ns, hit_wall):
+        if hit_wall:
+            return self.reward_boundary
+
+        if ns == self.target:
+            return self.reward_target
+
+        if ns in self.forbidden:
+            return self.reward_forbidden
+
+        return self.reward_step  # 新增普通格子 reward（如你需要）
+
+    def _move(self, s: Coord, a: Action):
         if self._is_terminal(s):
-            return s  # 吸收
+            return s, False  # 吸收，不算撞墙
 
         r, c = s
         dr, dc = 0, 0
         if a == Action.UP:
             dr = -1
         elif a == Action.DOWN:
-            dr = +1
+            dr = 1
         elif a == Action.LEFT:
             dc = -1
         elif a == Action.RIGHT:
-            dc = +1
+            dc = 1
         elif a == Action.STAY:
-            dr = dc = 0
+            dr = dc = 0  # stay 不算撞墙
 
         nr, nc = r + dr, c + dc
-        if self._in_bounds((nr, nc)):
-            return nr, nc
 
-        # 撞墙
-        return s if self.stay_on_wall else (max(0, min(self.h - 1, nr)), max(0, min(self.w - 1, nc)))
+        # 合法移动
+        if self._in_bounds((nr, nc)):
+            return (nr, nc), False
+
+        # 撞墙（无论 stay_on_wall=True 或 False 都算撞墙）
+        if self.stay_on_wall:
+            return s, True
+        else:
+            clipped = (
+                max(0, min(self.h - 1, nr)),
+                max(0, min(self.w - 1, nc)),
+            )
+            return clipped, True
 
     def _sample_action(self, sid: int) -> Action:
         probs = self.policy.get(sid)
@@ -230,8 +267,9 @@ class GridWorld:
         if dist is not None:
             return dist
         # 兜底按默认规则
+        s = self.id2s[sid]
         ns = self.id2s[nsid]
-        return {self._default_reward(ns): 1.0}
+        return {self._default_reward(s, a, ns): 1.0}
 
     # ---------- 工具 ----------
     def sid(self, s: Coord) -> int:

@@ -380,7 +380,9 @@ class TDFAPlanner:
             sid = self.env.sid(self.env.s)
             ep_ret = 0.0
 
-            for t in range(self.cfg.max_steps_per_episode):
+            t = 0
+            done = False
+            while t < self.cfg.max_steps_per_episode and not done:
                 # ε-greedy（on-policy 采样）
                 if self.rng.random() < eps:
                     a = self.rng.choice(self._allowed(sid))
@@ -423,8 +425,7 @@ class TDFAPlanner:
                 if global_step % target_sync_every == 0:
                     tq.load_state_dict(q.state_dict())
 
-                if done:
-                    break
+                t += 1
 
             self.logger.add_scalar("episode/return", float(ep_ret), ep)
             if epsilon_decay is not None:
@@ -485,7 +486,9 @@ class TDFAPlanner:
             sid = self.env.sid(self.env.s)
             ep_ret = 0.0
 
-            for t in range(self.cfg.max_steps_per_episode):
+            t = 0
+            done = False
+            while t < self.cfg.max_steps_per_episode and not done:
                 # 行为策略 ε_b（off-policy 采样）
                 if self.rng.random() < behavior_epsilon:
                     a = self.rng.choice(self._allowed(sid))
@@ -521,8 +524,7 @@ class TDFAPlanner:
                 if global_step % target_sync_every == 0:
                     tq.load_state_dict(q.state_dict())
 
-                if done:
-                    break
+                t += 1
 
             self.logger.add_scalar("episode/return", float(ep_ret), ep)
 

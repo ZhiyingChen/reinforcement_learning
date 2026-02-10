@@ -148,14 +148,14 @@ class TDFAPlanner:
             return np.concatenate([psi, one, inter.ravel()], dtype=np.float32)
         return np.concatenate([psi, one], dtype=np.float32)
 
-    def _epsilon_greedy_from_qhat_linear(self, sid: int, w: np.ndarray, epsilon: float) -> Dict[Action, float]:
+    def _epsilon_greedy_from_qhat_linear(self, sid: int, w: np.ndarray, epsilon: float, use_interaction: bool=True) -> Dict[Action, float]:
         r"""
         基于线性近似 \hat{q}(s,a;w) 的 ε-greedy 分布。
         """
         acts = self._allowed(sid)
         q_vals = []
         for a in acts:
-            phi = self._sa_features(self.env, sid, a)
+            phi = self._sa_features(self.env, sid, a, use_interaction=use_interaction)
             q_vals.append(float(np.dot(w, phi)))
         max_q = max(q_vals) if q_vals else -np.inf
         best = [a for a, q in zip(acts, q_vals) if math.isclose(q, max_q, rel_tol=1e-9, abs_tol=1e-12)]
@@ -166,7 +166,7 @@ class TDFAPlanner:
         pi_s[a_star] = 1.0 - epsilon + base
         return pi_s
 
-    def _greedy_pi_from_qhat_linear(self, w: np.ndarray) -> Dict[int, Dict[Action, float]]:
+    def _greedy_pi_from_qhat_linear(self, w: np.ndarray, use_interaction: bool=True) -> Dict[int, Dict[Action, float]]:
         """
         输出 one-hot 的贪心策略（用于渲染）。
         """
@@ -176,7 +176,7 @@ class TDFAPlanner:
             if not acts:
                 pi[sid] = {Action.STAY: 1.0}
                 continue
-            q_s = {a: float(np.dot(w, self._sa_features(self.env, sid, a))) for a in acts}
+            q_s = {a: float(np.dot(w, self._sa_features(self.env, sid, a, use_interaction=use_interaction))) for a in acts}
             max_q = max(q_s.values())
             best = [a for a, q in q_s.items() if math.isclose(q, max_q, rel_tol=1e-9, abs_tol=1e-12)]
             a_star = sorted(best, key=lambda a: self.tie.index(a))[0]
@@ -214,17 +214,15 @@ class TDFAPlanner:
             self.env.reset()
             sid = self.env.sid(self.env.s)
             # 构造当前 ε-greedy 行为/目标策略（on-policy）
-            pi = {s: self._epsilon_greedy_from_qhat_linear(s, w, eps) for s in range(self.nS)}
+            pi = {s: self._epsilon_greedy_from_qhat_linear(s, w, eps, use_interaction=use_interaction) for s in range(self.nS)}
             a = sample_action_from_policy(self.rng, pi[sid])
             ep_ret = 0.0
 
-            for t in range(self.cfg.max_steps_per_episode):
+            t = 0
+            done = False
+            while t < self.cfg.max_steps_per_episode and not done:
                 nsid, r, done, _ = self.env.step(a)
                 ep_ret += float(r)
-
-                # 选择 a'（先于更新）
-                if not done:
-                    a_next = sample_action_from_policy(self.rng, pi[nsid])
 
                 # TD 目标与增量
                 phi_sa = self._sa_features(self.env, sid, a, use_interaction=use_interaction)
@@ -232,20 +230,20 @@ class TDFAPlanner:
                 if done:
                     target = float(r)
                 else:
+                    a_next = sample_action_from_policy(self.rng, pi[nsid])
                     phi_next = self._sa_features(self.env, nsid, a_next, use_interaction=use_interaction)
                     target = float(r) + self.gamma * float(np.dot(w, phi_next))
                 delta = target - q_sa
                 w += alpha * delta * phi_sa
 
                 # 仅在 s_t 局部做一次 ε-greedy 政策改进
-                pi[sid] = self._epsilon_greedy_from_qhat_linear(sid, w, eps)
+                pi[sid] = self._epsilon_greedy_from_qhat_linear(sid, w, eps, use_interaction=use_interaction)
 
                 # 诊断日志
                 if t % diag_every == 0:
                     self.logger.add_scalar("SARSA-Linear/td_error_abs", abs(float(delta)), ep * 10_000 + t)
 
-                if done:
-                    break
+                t += 1
                 sid, a = nsid, a_next
 
             # 每集收尾
@@ -255,7 +253,7 @@ class TDFAPlanner:
                 eps = max(min_epsilon, eps * epsilon_decay)
 
         # 最终贪心策略（用于可视化）
-        pi_star = self._greedy_pi_from_qhat_linear(w)
+        pi_star = self._greedy_pi_from_qhat_linear(w, use_interaction=use_interaction)
         return w, pi_star
 
     # ============================================================
@@ -295,7 +293,7 @@ class TDFAPlanner:
             self.env.reset()
             sid = self.env.sid(self.env.s)
             # on-policy 行为策略
-            pi = {s: self._epsilon_greedy_from_qhat_linear(s, w, eps) for s in range(self.nS)}
+            pi = {s: self._epsilon_greedy_from_qhat_linear(s, w, eps, use_interaction=use_interaction) for s in range(self.nS)}
             a = sample_action_from_policy(self.rng, pi[sid])
             ep_ret = 0.0
 
@@ -313,7 +311,7 @@ class TDFAPlanner:
                 w += alpha * delta * phi_sa
 
                 # 局部策略改进（保持 on-policy）
-                pi[sid] = self._epsilon_greedy_from_qhat_linear(sid, w, eps)
+                pi[sid] = self._epsilon_greedy_from_qhat_linear(sid, w, eps, use_interaction=use_interaction)
 
                 if t % diag_every == 0:
                     self.logger.add_scalar("Q-Linear-On/td_error_abs", abs(float(delta)), ep * 10_000 + t)
@@ -329,7 +327,7 @@ class TDFAPlanner:
             if epsilon_decay is not None:
                 eps = max(min_epsilon, eps * epsilon_decay)
 
-        pi_star = self._greedy_pi_from_qhat_linear(w)
+        pi_star = self._greedy_pi_from_qhat_linear(w, use_interaction=use_interaction)
         return w, pi_star
 
     # ======================================

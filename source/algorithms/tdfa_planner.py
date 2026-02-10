@@ -297,7 +297,9 @@ class TDFAPlanner:
             a = sample_action_from_policy(self.rng, pi[sid])
             ep_ret = 0.0
 
-            for t in range(self.cfg.max_steps_per_episode):
+            t = 0
+            done = False
+            while t < self.cfg.max_steps_per_episode and not done:
                 nsid, r, done, _ = self.env.step(a)
                 ep_ret += float(r)
 
@@ -316,8 +318,7 @@ class TDFAPlanner:
                 if t % diag_every == 0:
                     self.logger.add_scalar("Q-Linear-On/td_error_abs", abs(float(delta)), ep * 10_000 + t)
 
-                if done:
-                    break
+                t += 1
                 # 下一步 a 来自“更新前”的策略 π_t(s')
                 a_next = sample_action_from_policy(self.rng, pi[nsid])
                 sid, a = nsid, a_next
@@ -354,7 +355,7 @@ class TDFAPlanner:
           - 收集数据时用当前主网的 ε-greedy
           - 均匀经验回放 + HuberLoss
           - 定期同步目标网络参数
-        参照 Lecture 8（P55-61）思路。                                    # 引用
+        参照 Lecture 8（P55-61）思路。
         """
         obs_dim = self._state_features(self.env, 0).shape[0]
         nA = len(Action.all())

@@ -1,7 +1,7 @@
-# Reinforcement Learning — Code Implementation (Chapters 4–7)
+# Reinforcement Learning — Code Implementation (Chapters 4–8)
 
-本项目系统复现强化学习课程（赵世钰 · 西湖大学）Chapter 4–7 的核心算法（DP、MC、SA、TD）。
-后续将继续扩展至 Chapter 8–10（函数逼近、策略梯度、Actor‑Critic 等）。
+本项目系统复现强化学习课程（赵世钰 · 西湖大学）Chapter 4–8 的核心算法（DP、MC、SA、TD, TDFA）。
+后续将继续扩展至 Chapter 9–10（策略梯度、Actor‑Critic 等）。
 
 项目特点：
 
@@ -22,6 +22,7 @@ pip install -r requirements.txt
 python main/chapter_4_1_value_iteration.py
 python main/chapter_5_3_mc_epsilon_greedy.py
 python main/chapter_7_1_sarsa.py
+python main/chapter_8_1_sarsa_linear.py
 ```
 
 ---
@@ -46,14 +47,19 @@ reinforcement_learning/
 │   ├── chapter_7_2_expected_sarsa.py
 │   ├── chapter_7_3_nstep_sarsa.py
 │   ├── chapter_7_4_q_learning_on_policy.py
-│   └── chapter_7_5_q_learning_off_policy.py
+│   ├── chapter_7_5_q_learning_off_policy.py
+│   ├── chapter_8_1_sarsa_linear.py
+│   ├── chapter_8_2_q_learning_linear_on.py
+│   ├── chapter_8_3_dqn_on_policy.py
+│   └── chapter_8_4_dqn_off_policy.py
 │
 ├── source/
 │   ├── algorithms/
 │   │   ├── vp_planner.py                  # V & P：VI / PI / Truncated PI
 │   │   ├── mc_planner.py                  # MC：Basic / ES / ε-greedy
 │   │   ├── sa_planner.py                  # SA：RM / GD / SGD / BGD / MBGD
-│   │   └── td_planner.py                  # TD：SARSA / Expected SARSA / n-Step SARSA / (on & off) Q-learning
+│   │   ├── td_planner.py                  # TD：SARSA / Expected SARSA / n-Step SARSA / (on & off) Q-learning
+│   │   └── tdfa_planner.py                # TDFA: SARSA linear / Q-learning linear / (on & off) DQN
 │   │
 │   ├── domain_object/
 │   │   ├── action.py                      # Action 枚举（UP/DOWN/LEFT/RIGHT/STAY）
@@ -308,6 +314,82 @@ TDPlanner 提供以下统一能力：
   Q, pi = planner.q_learning_off_policy(...)
 ```
 ---
+## 🟩 Chapter 8 — Value Function Approximation 
+Chapter 8 引入 函数逼近（Function Approximation, FA） 框架，用于在更大规模状态空间上逼近价值函数。相较于前 7 章基于“表格”的 Q(s,a)，本章开始支持：
+
+- 线性函数逼近（Linear FA）
+- 深度神经网络逼近（Deep Q-Network, DQN）
+
+所有算法统一实现在：
+`source/algorithms/tdfa_planner.py`
+
+### ⭐ 8.1 SARSA with Linear Function Approximation（线性 SARSA）
+入口脚本：
+`main/chapter_8_1_sarsa_linear.py `
+
+线性 FA 的 Q 函数形式为：
+$\hat{q}(s,a;w)=⟨w,\phi(s,a)⟩$
+
+特征设计（TDFAPlanner._sa_features）采用多项式组合：
+
+- 状态特征：$[1,x,y,x^2,y^2,xy]$，其中 $(x,y)$ 为归一化坐标 
+- 动作 
+- 可选: 状态×动作交互项（use_interaction 参数）
+
+SARSA-Linear 更新规则：
+$w \leftarrow w + \alpha\big[r + \gamma \hat{q}(s',a') - \hat{q}(s,a)\big]\phi(s,a)$
+
+特点：
+- 完整 on-policy：行为策略 = 目标策略 = ε-greedy(w)
+- 支持 ε decay
+- 每次更新后立即做策略改进（保持 on-policy）
+- TensorBoard：记录 td-error、episode return 等
+
+---
+### ⭐ 8.2 Q-learning with Linear FA（线性 Q-learning，On‑policy 版）
+入口脚本：
+ `main/chapter_8_2_q_learning_linear_on.py`
+
+线性 Q-learning 仍使用线性特征，但 TD 目标改为 Max Action：
+$ w \leftarrow w + \alpha\big[r + \gamma \max_{a'}\hat{q}(s',a') - \hat{q}(s,a)\big]\phi(s,a)$
+
+特点：
+
+- 行为策略仍然是 ε-greedy(w)（on-policy）
+- 目标是 off-policy（因为包含 max）
+- 性能比 SARSA-Linear 更激进，收敛更快
+
+### ⭐ 8.3 Deep Q‑Network — On‑Policy 版本
+入口脚本：`main/chapter_8_3_dqn_on_policy.py`
+
+QNet（神经网络）结构：
+```Python
+in_dim = 6  # state features
+Q(s) -> [Q(s,a1), Q(s,a2), ..., Q(s,a5)]
+MLP: Linear → ReLU → Linear → ... → Linear(nA)
+```
+DQN-On 的关键组件：
+
+✔ 经验回放（Replay Buffer）
+
+✔ 目标网络（Target Network）
+
+- 每隔 target_sync_every 步同步一次
+- 提供稳定的 TD 目标 $\quad y = r + \gamma \max_{a'}Q_{\text{target}}(s',a')$
+
+✔ ε‑greedy 行为策略（On‑policy）
+
+✔ Huber Loss（SmoothL1Loss）
+- 比 MSE 更鲁棒，对 outlier 不敏感。
+
+### ⭐ 8.4 Deep Q‑Network — Off‑Policy 版本
+入口脚本：
+`main/chapter_8_4_dqn_off_policy.py`
+
+这里和on policy唯一的区别就是 $\epsilon$ 的取值。
+
+
+
 ## 📊 Logging / TensorBoard / Timing
 
 项目提供完整日志支持：
@@ -340,9 +422,8 @@ tensorboard --logdir logs/
 
 ---
 
-## ⏳ To Be Continued (Chapters 8–10)
-本仓库仍在持续开发，未来将加入 Chapter 8-10 的部分 （⏳ TODO）
-- Chapter 8：Value Function Approximation（Linear / NN）
+## ⏳ To Be Continued (Chapters 9–10)
+本仓库仍在持续开发，未来将加入 Chapter 9-10 的部分 （⏳ TODO）
 - Chapter 9：Policy Gradient Methods（REINFORCE / Baseline）
 - Chapter 10：Actor–Critic（A2C / n‑step AC 等）
 

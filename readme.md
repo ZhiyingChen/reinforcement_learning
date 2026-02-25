@@ -1,7 +1,6 @@
-# Reinforcement Learning — Code Implementation (Chapters 4–8)
+# Reinforcement Learning — Code Implementation (Chapters 4–10)
 
-本项目系统复现强化学习课程（赵世钰 · 西湖大学）Chapter 4–8 的核心算法（DP、MC、SA、TD, TDFA）。
-后续将继续扩展至 Chapter 9–10（策略梯度、Actor‑Critic 等）。
+本项目系统复现强化学习课程（赵世钰 · 西湖大学）Chapter 4–10 的核心算法（DP、MC、SA、TD、TDFA、策略梯度、Actor‑Critic）。
 
 项目特点：
 
@@ -23,6 +22,8 @@ python main/chapter_4_1_value_iteration.py
 python main/chapter_5_3_mc_epsilon_greedy.py
 python main/chapter_7_1_sarsa.py
 python main/chapter_8_1_sarsa_linear.py
+python main/chapter_9_1_reinforce.py
+python main/chapter_10_3_off_policy_ac.py
 ```
 
 ---
@@ -51,7 +52,12 @@ reinforcement_learning/
 │   ├── chapter_8_1_sarsa_linear.py
 │   ├── chapter_8_2_q_learning_linear_on.py
 │   ├── chapter_8_3_dqn_on_policy.py
-│   └── chapter_8_4_dqn_off_policy.py
+│   ├── chapter_8_4_dqn_off_policy.py
+│   ├── chapter_9_1_reinforce.py
+│   ├── chapter_10_1_qac.py
+│   ├── chapter_10_2_a2c.py
+│   ├── chapter_10_3_off_policy_ac.py
+│   └── chapter_10_4_dpg.py
 │
 ├── source/
 │   ├── algorithms/
@@ -59,7 +65,8 @@ reinforcement_learning/
 │   │   ├── mc_planner.py                  # MC：Basic / ES / ε-greedy
 │   │   ├── sa_planner.py                  # SA：RM / GD / SGD / BGD / MBGD
 │   │   ├── td_planner.py                  # TD：SARSA / Expected SARSA / n-Step SARSA / (on & off) Q-learning
-│   │   └── tdfa_planner.py                # TDFA: SARSA linear / Q-learning linear / (on & off) DQN
+│   │   ├── tdfa_planner.py                # TDFA: SARSA linear / Q-learning linear / (on & off) DQN
+│   │   └── pgac_planner.py                # PGAC: Reinforce / QAC / A2C / (off) AC / DPG
 │   │
 │   ├── domain_object/
 │   │   ├── action.py                      # Action 枚举（UP/DOWN/LEFT/RIGHT/STAY）
@@ -345,7 +352,7 @@ $w \leftarrow w + \alpha\big[r + \gamma \hat{q}(s',a') - \hat{q}(s,a)\big]\phi(s
 - 每次更新后立即做策略改进（保持 on-policy）
 - TensorBoard：记录 td-error、episode return 等
 
----
+
 ### ⭐ 8.2 Q-learning with Linear FA（线性 Q-learning，On‑policy 版）
 入口脚本：
  `main/chapter_8_2_q_learning_linear_on.py`
@@ -388,8 +395,127 @@ DQN-On 的关键组件：
 
 这里和on policy唯一的区别就是 $\epsilon$ 的取值。
 
+---
+## 🟧 Chapter 9 — Policy Gradient Methods
+Chapter 9 从 value‑based 方法正式过渡到 policy‑based 方法，引入 参数化策略 与 梯度上升 思想。
+在本项目中，Chapter 9 的所有算法统一实现于：`source/algorithms/pgac_planner.py`
+
+### ⭐ 9.1 REINFORCE（Monte‑Carlo Policy Gradient）
+入口脚本: `main/chapter_9_1_reinforce.py`
+
+#### 算法思想
+REINFORCE 是最基础的 Policy Gradient 算法，直接最大化策略的期望回报：$J(\theta)=\mathbb{E}[\sum_{t=0}^{∞}\gamma^t R_{t+1}] $
+
+其核心更新规则为: $\theta \leftarrow \theta + \alpha \nabla_{\theta} \text{log} \pi(a_t|s_t;\theta) G_t$
+
+其中
+- $G_t = \sum_{k=t+1}^{T}\gamma^{k-t-1} r_k$ 为 Monte‑Carlo 回报
+
+#### 本项目实现要点
+
+- 策略表示：
+$\pi(a|s;\theta) = \text{softmax}(\langle \theta,\phi(s,a)\rangle)$
+
+- 梯度计算：
+$\nabla_\theta \log \pi(a|s)= \phi(s,a) - \mathbb{E}_{a'\sim\pi}[\phi(s,a')]$
+
+支持：
+
+- 回报标准化（return normalization），降低方差
+- TensorBoard 记录 episode return
 
 
+纯 Monte‑Carlo：无 bootstrapping、无 critic
+
+REINFORCE 是 Chapter 10 所有 Actor‑Critic 方法的起点。
+
+---
+## 🟥 Chapter 10 — Actor–Critic Methods
+Chapter 10 在 Policy Gradient 框架下引入 Critic（价值估计），用 TD 方法替代 Monte‑Carlo 回报，从而：
+
+- 显著降低梯度估计方差
+- 实现真正的 在线学习
+- 统一 value‑based 与 policy‑based 思想
+本章算法同样统一实现于： `source/algorithms/pgac_planner.py`
+
+### ⭐ 10.1 Q Actor–Critic（QAC）
+入口脚本: `main/chapter_10_1_qac.py`
+
+算法结构
+QAC 是最简单的 Actor–Critic 形式：
+
+- Critic：用 SARSA + 函数逼近估计 $q(s,a;w)$
+- Actor：用 $q(s,a)$ 作为权重更新策略参数
+
+更新规则：
+- Critic（SARSA‑FA）：
+
+$\delta_t = r_{t+1} + \gamma q(s_{t+1},a_{t+1};w) - q(s_t,a_t;w)$
+
+$w \leftarrow w + \alpha_w \delta_t \nabla_w q(s_t,a_t;w) $
+
+- Actor：
+
+$\theta \leftarrow \theta + \alpha_\theta \nabla_\theta \log \pi(a_t|s_t;\theta)\, q(s_t,a_t;w)$
+
+### ⭐ 10.2 Advantage Actor–Critic（A2C / TD Actor–Critic）
+入口脚本: `main/chapter_10_2_a2c.py`
+核心改进：Baseline
+
+A2C 利用 baseline 不变性，用状态值 $v(s)$ 作为 baseline，定义 Advantage：
+
+$A(s_t,a_t)=q(s_t,a_t)-v(s_t)\approx \delta_t$
+
+其中 TD 误差：
+$\delta_t = r_{t+1} + \gamma v(s_{t+1}) - v(s_t)$
+
+更新规则
+-  Critic（TD‑V）：
+$w \leftarrow w + \alpha_w \delta_t \nabla_w v(s_t;w)$
+-  Actor：
+$\theta \leftarrow \theta + \alpha_\theta \delta_t
+\nabla_\theta \log \pi(a_t|s_t;\theta)$
+
+### ⭐ 10.3 Off‑policy Actor–Critic（Importance Sampling
+入口脚本: `main/chapter_10_3_off_policy_ac.py`
+
+核心思想
+
+使用 行为策略 $\mu$ 采样，用 目标策略 $\pi$ 更新，引入重要性权重：
+$\rho_t = \frac{\pi(a_t|s_t)}{\mu(a_t|s_t)}$
+
+更新规则
+$\delta_t = r_{t+1} + \gamma v(s_{t+1}) - v(s_t)$
+- Critic：
+$ w \leftarrow w + \alpha_w \rho_t \delta_t \nabla_w v(s_t)$
+
+- Actor：
+$\theta \leftarrow \theta + \alpha_\theta \rho_t \delta_t \nabla_\theta \log \pi(a_t|s_t)$
+
+### ⭐ 10.4 Deterministic Policy Gradient（DPG）
+
+入口脚本: `main/chapter_10_4_dpg.py`
+
+理论背景
+
+DPG 原始形式适用于 连续动作空间：
+$\nabla_\theta J(\theta)= \mathbb{E}\big[\nabla_\theta \mu(s)\nabla_a q(s,a)\vert_{a=\mu(s)}\big]$
+
+本项目的离散动作实现策略 由于 GridWorld 为离散动作，本项目采用 可微替代方案：
+
+- Deterministic actor 输出概率向量 $\mu(s)\in\Delta(A)$
+- 定义：
+$q(s,\mu(s)) = \sum_a \mu(a|s) q(s,a)$
+
+- 对 $\mu$ 可微，保持 DPG 结构一致
+
+更新规则
+- Critic：
+$ \delta_t = r_{t+1} + \gamma q(s_{t+1},\mu(s_{t+1})) - q(s_t,a_t)$
+- Actor：
+$\theta \leftarrow \theta + \alpha_\theta \nabla_\theta \big[\mu(s_t)\cdot q(s_t,\cdot)\big]$
+
+---
 ## 📊 Logging / TensorBoard / Timing
 
 项目提供完整日志支持：
@@ -397,7 +523,7 @@ DQN-On 的关键组件：
 ### ✔ Python Logging  
 日志输出到：`logs/run.log`，由：`utils/logger_manager.py`统一管理。
 
----
+
 
 ### ✔ TensorBoard 可视化
 
@@ -413,7 +539,6 @@ DQN-On 的关键组件：
 tensorboard --logdir logs/
 ```
 
----
 
 ### ✔ 时间统计（Timing）
 
@@ -422,10 +547,6 @@ tensorboard --logdir logs/
 
 ---
 
-## ⏳ To Be Continued (Chapters 9–10)
-本仓库仍在持续开发，未来将加入 Chapter 9-10 的部分 （⏳ TODO）
-- Chapter 9：Policy Gradient Methods（REINFORCE / Baseline）
-- Chapter 10：Actor–Critic（A2C / n‑step AC 等）
 
 ## 🙌 Acknowledgement
 本项目由 Zhiying Chen 主导开发， 算法与代码设计由 M365 Copilot 协助完善。
